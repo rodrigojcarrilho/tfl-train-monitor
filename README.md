@@ -94,7 +94,3 @@ Contributions are welcome! Please feel free to submit pull requests, especially 
 - Configuration improvements
 - Bug fixes
 - Documentation updates
-
-## License
-
-MIT License 
