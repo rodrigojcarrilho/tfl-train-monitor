@@ -3,6 +3,18 @@ from colorama import Fore, Style
 import pandas as pd
 
 class Display:
+    # Default direction configurations
+    DIRECTION_CONFIG = {
+        "northbound": {
+            "arrow": "🔼",
+            "default_destination": "Stratford"
+        },
+        "southbound": {
+            "arrow": "🔽",
+            "default_destination": "Clapham Junction"
+        }
+    }
+
     @staticmethod
     def clear_screen():
         """Clear the terminal screen."""
@@ -32,12 +44,17 @@ class Display:
         print(f"\n{Fore.CYAN}=== {station_name} ==={Style.RESET_ALL}")
         print(f"Line Status: {status_color}{line_status}{Style.RESET_ALL}")
 
-    @staticmethod
-    def show_direction_header(direction):
-        """Display the direction header."""
-        arrow = "🔼" if direction.lower() == "northbound" else "🔽"
-        destination = "Stratford" if direction.lower() == "northbound" else "Clapham Junction"
-        print(f"\n{Fore.YELLOW}{arrow} {direction} to {destination}:{Style.RESET_ALL}")
+    @classmethod
+    def show_direction_header(cls, direction, destination=None):
+        """Display the direction header with custom destination."""
+        direction = direction.lower()
+        config = cls.DIRECTION_CONFIG.get(direction, {
+            "arrow": "➡️",
+            "default_destination": "Unknown"
+        })
+        
+        dest = destination or config["default_destination"]
+        print(f"\n{Fore.YELLOW}{config['arrow']} {direction.title()} to {dest}:{Style.RESET_ALL}")
 
     @staticmethod
     def show_trains(trains):

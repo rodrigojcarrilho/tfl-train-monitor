@@ -66,17 +66,28 @@ class Station:
             northbound_trains = []
             southbound_trains = []
 
+            # Keep track of vehicle IDs to avoid duplicates
+            seen_vehicle_ids = set()
+
             for train in data:
+                vehicle_id = train.get("vehicleId")
+                
+                # Skip if we've already seen this train
+                if vehicle_id in seen_vehicle_ids:
+                    continue
+                
                 destination = train.get("destinationName", "").lower()
                 train_info = self.process_train_data(train)
 
                 # Check northbound routes
                 if any(route in destination for route in self.routes['northbound']):
                     northbound_trains.append(train_info)
+                    seen_vehicle_ids.add(vehicle_id)
                 # Check southbound routes - filter for Clapham Junction if clapham_only is True
                 elif any(route in destination for route in self.routes['southbound']):
                     if not clapham_only or "clapham junction" in destination:
                         southbound_trains.append(train_info)
+                        seen_vehicle_ids.add(vehicle_id)
 
             # Sort and limit results using the raw time
             northbound_trains = sorted(northbound_trains, key=lambda x: x["_raw_time"])[:max_trains]
