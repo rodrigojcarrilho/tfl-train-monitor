@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Mapping
 
 from .config import DEFAULT_ROUTES, RouteDefinition, StationBoard
-from .tfl import TflApiError, TflClient
+from .tfl import TflClient
 
 
 class UnknownRouteError(KeyError):
@@ -36,7 +36,7 @@ class RouteService:
         limit = max(1, min(limit, 10))
 
         cached = self._cache.get(route_id)
-        now = datetime.now(UTC)
+        now = datetime.now(timezone.utc)
         if cached and now - cached[0] < timedelta(seconds=self.cache_seconds):
             return {**cached[1], "cached": True}
 
