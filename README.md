@@ -1,22 +1,43 @@
 # TfL Train Monitor
 
-Real-time TfL arrivals, prepared for a terminal display, dashboard, or Home Assistant.
+Live departure data for a terminal display, dashboard, Home Assistant, or mobile widget.
 
-## New: reusable route-data service
+## Reusable route-data service
 
-The original terminal monitor remains available. The `train_times` package adds a stable data layer that separates:
+The original terminal monitor remains available. The `train_times` package creates a small, stable data layer:
 
-1. **configuration** — stations and their service/destination filters;
-2. **TfL retrieval** — one small client, with explicit errors;
-3. **normalisation** — compact JSON without terminal colour codes;
-4. **delivery** — an optional HTTP API for Home Assistant or other consumers.
+1. **Configuration** — stations and the services that matter to you;
+2. **TfL retrieval** — one focused client, with clear errors;
+3. **Normalisation** — a compact departure-focused JSON response;
+4. **Delivery** — an optional HTTP API that any widget or automation can query.
 
-The first configured route is `kensington_olympia_highbury_islington`, providing two boards:
+The first configured route is `kensington_olympia_highbury_islington`, with two boards:
 
-- Kensington Olympia → Highbury & Islington (Mildmay services whose destination is Stratford)
-- Highbury & Islington → Kensington Olympia (Mildmay services whose destination is Clapham Junction)
+- Kensington Olympia → Highbury & Islington (Mildmay services to Stratford)
+- Highbury & Islington → Kensington Olympia (Mildmay services to Clapham Junction)
 
-TfL exposes the route's final destination, not a full calling pattern. The configured destination hints correspond to the services that call at the target stations; add a more specific calling-pattern data source later if you need a hard guarantee for an intermediate stop.
+### Consumer-first response
+
+`GET /v1/routes/kensington_olympia_highbury_islington/departures?limit=3` provides an immediate `next_departure` for each board as well as the `departures` list.
+
+```json
+{
+  "station_name": "Kensington Olympia",
+  "target_station": "Highbury & Islington",
+  "next_departure": {
+    "expected_departure": "2026-11-12T09:32:00Z",
+    "minutes_until_departure": 6,
+    "platform": "Platform 2",
+    "destination": "Stratford (London) Rail Station",
+    "cancelled": null,
+    "cancellation_status": "not_reported"
+  }
+}
+```
+
+The TfL arrivals endpoint calls its prediction `expectedArrival`. At the station it functions as the live departure-board prediction, so the public API intentionally presents it as `expected_departure`.
+
+**Cancellation accuracy:** TfL's live response contains active predictions but does not currently include a per-service cancellation flag or a scheduled departure time. For that reason, `cancelled` is `null` and `cancellation_status` is `not_reported` unless an upstream provider explicitly supplies a cancellation value. It never silently reports an unknown service as active. Add a National Rail/Darwin-compatible provider if confirmed cancellations become essential.
 
 ### Run the service
 
@@ -29,28 +50,30 @@ uvicorn train_times.api:app --host 0.0.0.0 --port 8080
 - `GET /v1/routes`
 - `GET /v1/routes/kensington_olympia_highbury_islington/departures?limit=3`
 
-Each departure returns predictable fields such as `minutes_until`, `expected_arrival`, `platform`, `destination`, and `status`. Results are cached in-process for 15 seconds so several dashboards do not each call TfL.
+Responses are cached in-process for 15 seconds so multiple widgets do not each call TfL.
 
 ### Home Assistant example
 
-Add a REST sensor (replace the host with the machine/container that runs this service):
+Add a REST sensor (replace the host with the machine or container running this service):
 
 ```yaml
 rest:
   - resource: http://TRAIN_TIMES_HOST:8080/v1/routes/kensington_olympia_highbury_islington/departures?limit=3
     scan_interval: 30
     sensor:
-      - name: Kensington Olympia departures
-        unique_id: kensington_olympia_departures
+      - name: Kensington Olympia next departure
+        unique_id: kensington_olympia_next_departure
         value_template: >
-          {{ value_json.boards[0].arrivals[0].minutes_until
-             if value_json.boards[0].arrivals else 'none' }}
+          {{ value_json.boards[0].next_departure.minutes_until_departure
+             if value_json.boards[0].next_departure else 'none' }}
         json_attributes:
           - fetched_at
           - boards
 ```
 
-Use the `boards` attribute in a Markdown card, or add template sensors for the opposite direction and individual departure details. To add a new journey, create another `RouteDefinition` in `train_times/config.py`; no API or filtering code should need to change.
+For an Android widget, query the same URL and display `boards[0].next_departure.expected_departure`, `minutes_until_departure`, and `cancellation_status`. The response structure does not depend on Home Assistant.
+
+To add a journey, create another `RouteDefinition` in `train_times/config.py`; the API and consumer contract stay the same.
 
 ## Original terminal monitor
 
