@@ -1,4 +1,4 @@
-"""Transform TfL's raw arrivals into stable, consumer-friendly route data."""
+"""Transform TfL's raw predictions into stable, consumer-friendly departure data."""
 
 from __future__ import annotations
 
@@ -62,17 +62,22 @@ class RouteService:
             destination = (raw.get("destinationName") or "").casefold()
             if not any(hint in destination for hint in hints):
                 continue
-            normalised = self.client.normalise_arrival(raw)
-            key = normalised["vehicle_id"] or f'{destination}:{normalised["expected_arrival"]}'
+            departure = self.client.normalise_arrival(raw)
+            key = departure["vehicle_id"] or f'{destination}:{departure["expected_departure"]}'
             current = unique.get(key)
-            if current is None or normalised["seconds_until"] < current["seconds_until"]:
-                unique[key] = normalised
+            if current is None or (
+                departure["seconds_until_departure"] < current["seconds_until_departure"]
+            ):
+                unique[key] = departure
 
-        arrivals = sorted(unique.values(), key=lambda item: item["seconds_until"])[:limit]
+        departures = sorted(
+            unique.values(), key=lambda item: item["seconds_until_departure"]
+        )[:limit]
         return {
             "station_id": board.station_id,
             "station_name": board.station_name,
             "direction": board.direction,
             "target_station": board.target_station,
-            "arrivals": arrivals,
+            "next_departure": departures[0] if departures else None,
+            "departures": departures,
         }
