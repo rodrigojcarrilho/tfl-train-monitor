@@ -27,11 +27,11 @@ class FakeClient:
             "vehicle_id": arrival["vehicleId"],
             "destination": arrival["destinationName"],
             "platform": arrival.get("platformName"),
-            "expected_arrival": arrival.get("expectedArrival"),
-            "scheduled_arrival": None,
-            "minutes_until": arrival["timeToStation"] // 60,
-            "seconds_until": arrival["timeToStation"],
-            "status": "Unknown",
+            "expected_departure": arrival.get("expectedArrival"),
+            "minutes_until_departure": arrival["timeToStation"] // 60,
+            "seconds_until_departure": arrival["timeToStation"],
+            "cancelled": None,
+            "cancellation_status": "not_reported",
             "line": arrival["lineId"],
             "fetched_at": "2026-01-01T12:00:00+00:00",
         }
@@ -42,5 +42,7 @@ def test_only_matching_destinations_are_returned():
     route = type("Route", (), {"route_id": "test", "name": "Test", "boards": (board,)})()
     result = RouteService(client=FakeClient(), routes={"test": route}).departures("test")
 
-    assert result["boards"][0]["arrivals"][0]["vehicle_id"] == "one"
-    assert len(result["boards"][0]["arrivals"]) == 1
+    board_result = result["boards"][0]
+    assert board_result["next_departure"]["vehicle_id"] == "one"
+    assert board_result["next_departure"]["cancellation_status"] == "not_reported"
+    assert len(board_result["departures"]) == 1
