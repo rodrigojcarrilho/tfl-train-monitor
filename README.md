@@ -1,76 +1,84 @@
 # TfL Train Monitor
 
-A real-time train monitoring application for Transport for London (TfL) stations. Currently configured for monitoring trains between Stratford and Clapham Junction on the London Overground, but designed to be adaptable for other routes.
+Live departure data for a terminal display, dashboard, Home Assistant, or mobile widget.
 
-## Current Configuration
+## Reusable route-data service
 
-This implementation is specifically monitoring:
-- Kensington Olympia (Northbound to Stratford)
-- Highbury & Islington (Southbound to Clapham Junction)
+The original terminal monitor remains available. The `train_times` package creates a small, stable data layer:
 
-## Features
+1. **Configuration** — stations and the services that matter to you;
+2. **TfL retrieval** — one focused client, with clear errors;
+3. **Normalisation** — a compact departure-focused JSON response;
+4. **Delivery** — an optional HTTP API that any widget or automation can query.
 
-- Real-time train arrival information
-- Live service status updates
-- Configurable station display preferences
-- Color-coded arrival times
-- Platform information
-- Customizable refresh rate
+The first configured route is `kensington_olympia_highbury_islington`, with two boards:
 
-## Requirements
+- Kensington Olympia → Highbury & Islington (Mildmay services to Stratford)
+- Highbury & Islington → Kensington Olympia (Mildmay services to Clapham Junction)
 
-- Python 3.6+
-- Required packages listed in `requirements.txt`
+### Consumer-first response
 
-## Configuration
+`GET /v1/routes/kensington_olympia_highbury_islington/departures?limit=3` provides an immediate `next_departure` for each board as well as the `departures` list.
 
-### Station Configuration
-
-Stations are configured in `main.py` using the `STATIONS` dictionary. Each station requires:
-- `id`: TfL station ID
-- `line`: TfL line ID
-- `routes`: Dictionary of northbound/southbound destinations
-- `display`: Display preferences for each direction
-
-Example configuration:
-```python
-STATIONS = {
-    "Station Name": {
-        "id": "STATION_ID",
-        "line": "LINE_ID",
-        "routes": {
-            "northbound": ["destination1", "destination2"],
-            "southbound": ["destination3", "destination4"]
-        },
-        "display": {
-            "show_northbound": True,
-            "show_southbound": True
-        }
-    }
+```json
+{
+  "station_name": "Kensington Olympia",
+  "target_station": "Highbury & Islington",
+  "next_departure": {
+    "expected_departure": "2026-11-12T09:32:00Z",
+    "minutes_until_departure": 6,
+    "platform": "Platform 2",
+    "destination": "Stratford (London) Rail Station",
+    "cancelled": null,
+    "cancellation_status": "not_reported"
+  }
 }
 ```
 
-### Adapting for Other Routes
+The TfL arrivals endpoint calls its prediction `expectedArrival`. At the station it functions as the live departure-board prediction, so the public API intentionally presents it as `expected_departure`.
 
-To adapt this monitor for different routes:
+**Cancellation accuracy:** TfL's live response contains active predictions but does not currently include a per-service cancellation flag or a scheduled departure time. For that reason, `cancelled` is `null` and `cancellation_status` is `not_reported` unless an upstream provider explicitly supplies a cancellation value. It never silently reports an unknown service as active. Add a National Rail/Darwin-compatible provider if confirmed cancellations become essential.
 
-1. Find Station IDs:
-   - Use the TfL API to find station IDs: `https://api.tfl.gov.uk/StopPoint/Search/{station_name}`
-   - Or consult the TfL API documentation: [TfL API Docs](https://api.tfl.gov.uk/swagger/ui/index.html)
+### Run the service
 
-2. Update Configuration:
-   - Modify the `STATIONS` dictionary in `main.py`
-   - Add new stations with their IDs and routes
-   - Configure display preferences per station
+```bash
+python -m pip install -e .
+uvicorn train_times.api:app --host 0.0.0.0 --port 8080
+```
 
-3. Customize Display:
-   - Modify `classes/display.py` for different display formats
-   - Update direction headers in `show_direction_header()`
-   - Adjust color coding thresholds if needed
+- `GET /health`
+- `GET /v1/routes`
+- `GET /v1/routes/kensington_olympia_highbury_islington/departures?limit=3`
 
-## Color Coding
+Responses are cached in-process for 15 seconds so multiple widgets do not each call TfL.
 
-- 🟢 Green: Train arrives in more than 10 minutes
-- 🟡 Yellow: Train arrives in 5-10 minutes
-- 🔴 Red: Train arrives in less than 5 minutes
-- "Due": Train arrives in less than 1 minute
+### Home Assistant example
+
+Add a REST sensor (replace the host with the machine or container running this service):
+
+```yaml
+rest:
+  - resource: http://TRAIN_TIMES_HOST:8080/v1/routes/kensington_olympia_highbury_islington/departures?limit=3
+    scan_interval: 30
+    sensor:
+      - name: Kensington Olympia next departure
+        unique_id: kensington_olympia_next_departure
+        value_template: >
+          {{ value_json.boards[0].next_departure.minutes_until_departure
+             if value_json.boards[0].next_departure else 'none' }}
+        json_attributes:
+          - fetched_at
+          - boards
+```
+
+For an Android widget, query the same URL and display `boards[0].next_departure.expected_departure`, `minutes_until_departure`, and `cancellation_status`. The response structure does not depend on Home Assistant.
+
+To add a journey, create another `RouteDefinition` in `train_times/config.py`; the API and consumer contract stay the same.
+
+## Original terminal monitor
+
+The original display requires the packages in `requirements.txt` and can still be run with:
+
+```bash
+python main.py
+```

@@ -1,0 +1,17 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tfl-train-monitor"
+version = "0.2.0"
+description = "Clean TfL departure data for dashboards and Home Assistant"
+requires-python = ">=3.10"
+dependencies = [
+  "requests>=2.31.0",
+  "fastapi>=0.110.0",
+  "uvicorn[standard]>=0.27.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["train_times*"]
