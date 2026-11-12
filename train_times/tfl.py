@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime
+from datetime import datetime, timezone
 from typing import Any
 
 import requests
@@ -48,5 +48,5 @@ class TflClient:
             "seconds_until": seconds,
             "status": arrival.get("currentLocation") or "Unknown",
             "line": arrival.get("lineId") or arrival.get("lineName"),
-            "fetched_at": datetime.now(UTC).isoformat(),
+            "fetched_at": datetime.now(timezone.utc).isoformat(),
         }
