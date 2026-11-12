@@ -1,76 +1,61 @@
 # TfL Train Monitor
 
-A real-time train monitoring application for Transport for London (TfL) stations. Currently configured for monitoring trains between Stratford and Clapham Junction on the London Overground, but designed to be adaptable for other routes.
+Real-time TfL arrivals, prepared for a terminal display, dashboard, or Home Assistant.
 
-## Current Configuration
+## New: reusable route-data service
 
-This implementation is specifically monitoring:
-- Kensington Olympia (Northbound to Stratford)
-- Highbury & Islington (Southbound to Clapham Junction)
+The original terminal monitor remains available. The `train_times` package adds a stable data layer that separates:
 
-## Features
+1. **configuration** — stations and their service/destination filters;
+2. **TfL retrieval** — one small client, with explicit errors;
+3. **normalisation** — compact JSON without terminal colour codes;
+4. **delivery** — an optional HTTP API for Home Assistant or other consumers.
 
-- Real-time train arrival information
-- Live service status updates
-- Configurable station display preferences
-- Color-coded arrival times
-- Platform information
-- Customizable refresh rate
+The first configured route is `kensington_olympia_highbury_islington`, providing two boards:
 
-## Requirements
+- Kensington Olympia → Highbury & Islington (Mildmay services whose destination is Stratford)
+- Highbury & Islington → Kensington Olympia (Mildmay services whose destination is Clapham Junction)
 
-- Python 3.6+
-- Required packages listed in `requirements.txt`
+TfL exposes the route's final destination, not a full calling pattern. The configured destination hints correspond to the services that call at the target stations; add a more specific calling-pattern data source later if you need a hard guarantee for an intermediate stop.
 
-## Configuration
+### Run the service
 
-### Station Configuration
-
-Stations are configured in `main.py` using the `STATIONS` dictionary. Each station requires:
-- `id`: TfL station ID
-- `line`: TfL line ID
-- `routes`: Dictionary of northbound/southbound destinations
-- `display`: Display preferences for each direction
-
-Example configuration:
-```python
-STATIONS = {
-    "Station Name": {
-        "id": "STATION_ID",
-        "line": "LINE_ID",
-        "routes": {
-            "northbound": ["destination1", "destination2"],
-            "southbound": ["destination3", "destination4"]
-        },
-        "display": {
-            "show_northbound": True,
-            "show_southbound": True
-        }
-    }
-}
+```bash
+python -m pip install -e .
+uvicorn train_times.api:app --host 0.0.0.0 --port 8080
 ```
 
-### Adapting for Other Routes
+- `GET /health`
+- `GET /v1/routes`
+- `GET /v1/routes/kensington_olympia_highbury_islington/departures?limit=3`
 
-To adapt this monitor for different routes:
+Each departure returns predictable fields such as `minutes_until`, `expected_arrival`, `platform`, `destination`, and `status`. Results are cached in-process for 15 seconds so several dashboards do not each call TfL.
 
-1. Find Station IDs:
-   - Use the TfL API to find station IDs: `https://api.tfl.gov.uk/StopPoint/Search/{station_name}`
-   - Or consult the TfL API documentation: [TfL API Docs](https://api.tfl.gov.uk/swagger/ui/index.html)
+### Home Assistant example
 
-2. Update Configuration:
-   - Modify the `STATIONS` dictionary in `main.py`
-   - Add new stations with their IDs and routes
-   - Configure display preferences per station
+Add a REST sensor (replace the host with the machine/container that runs this service):
 
-3. Customize Display:
-   - Modify `classes/display.py` for different display formats
-   - Update direction headers in `show_direction_header()`
-   - Adjust color coding thresholds if needed
+```yaml
+rest:
+  - resource: http://TRAIN_TIMES_HOST:8080/v1/routes/kensington_olympia_highbury_islington/departures?limit=3
+    scan_interval: 30
+    sensor:
+      - name: Kensington Olympia departures
+        unique_id: kensington_olympia_departures
+        value_template: >
+          {{ value_json.boards[0].arrivals[0].minutes_until
+             if value_json.boards[0].arrivals else 'none' }}
+        json_attributes:
+          - fetched_at
+          - boards
+```
 
-## Color Coding
+Use the `boards` attribute in a Markdown card, or add template sensors for the opposite direction and individual departure details. To add a new journey, create another `RouteDefinition` in `train_times/config.py`; no API or filtering code should need to change.
 
-- 🟢 Green: Train arrives in more than 10 minutes
-- 🟡 Yellow: Train arrives in 5-10 minutes
-- 🔴 Red: Train arrives in less than 5 minutes
-- "Due": Train arrives in less than 1 minute
+## Original terminal monitor
+
+The original display requires the packages in `requirements.txt` and can still be run with:
+
+```bash
+python main.py
+```
